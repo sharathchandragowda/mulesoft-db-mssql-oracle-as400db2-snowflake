@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="Copy_of_HeterogeneousDataJoin" doc:id="98ba325d-3c18-4bfe-a0c6-fddac59f78fe" >
+		<scheduler doc:name="Scheduler to run the flow" doc:id="7acba0ef-1629-4f9f-942e-af94fcbcf934" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="1" timeUnit="HOURS" />
+			</scheduling-strategy>
+		</scheduler>
+		<scatter-gather doc:name="Scatter-Gather to parallely execute queries on 4 Databases-Tables = MS SQL, Oracle, AS400/DB2 and Snowflake" doc:id="b608bbe6-4cb0-4c6d-8894-56b79b334f14" >
+			<route >
+				<db:select doc:id="a74a9969-fbc2-4762-8e78-af05ca71ac49" config-ref="MSSQL_DB_Database_Config" doc:name='Selecting records from MS SQL DB - Table "Country"' >
+					<db:sql ><![CDATA[SELECT * FROM master.dbo.country]]></db:sql>
+				</db:select>
+			</route>
+			<route >
+				<db:select doc:id="4800be8c-41ea-40fa-8a1a-0ef99535b68d" config-ref="Oracle_DB_Database_Config" doc:name='Selecting records from Oracle DB - Table "City"' >
+					<db:sql ><![CDATA[SELECT * FROM DEMOAP.CITY]]></db:sql>
+				</db:select>
+			</route>
+			<route >
+				<db:select doc:id="509c30d7-2cc4-4307-99da-1393d922ad94" config-ref="AS400_DB2_Database_Config" doc:name='Selecting records from AS400/DB2 - Table "Customer"' >
+					<db:sql ><![CDATA[SELECT * FROM SGOWDA1.customer]]></db:sql>
+				</db:select>
+			</route>
+			<route >
+				<db:select doc:id="8b031059-104c-454d-ba65-9e8d82c2214b" config-ref="Snowflake_Database_Config" doc:name='Selecting records from Snowflake Table "Call"' >
+					<db:sql ><![CDATA[Select * from CALL]]></db:sql>
+				</db:select>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Collating the data using DataWeave" doc:id="6c526a0b-c0dd-458a-a41c-b6e3e48cb103" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var var1 = payload."0".payload
+var var2 = payload."1".payload
+var var3 = payload."2".payload
+var var4 = payload."3".payload
+---
+var1 map (var1value) ->
+{
+	id : var1value.id as Number,
+	country_name_eng: var1value.country_name_eng,
+	country_code: var1value.country_code,
+	(var2 filter($.*country_id contains var1value.id) map (var2value) -> {
+		city_name: var2value.city_name,
+		(var3 filter($.*city_id contains var2value.id) map (var3value) -> {
+		    customer_name: var3value.customer_name,
+		    (var4 filter($.*customer_id contains var2value.id) map (var4value) -> {
+		        status: var4value.status
+	})
+	})
+	})
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger to see output" doc:id="2b3ae146-61e6-4092-8811-b127897d25c8" message="#[payload]" />
+	</flow>
+</mule>
